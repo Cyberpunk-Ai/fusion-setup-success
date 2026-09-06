@@ -19,6 +19,19 @@ function getChannel() {
   if (typeof window === "undefined") return null;
   if (!sharedChannel) {
     sharedChannel = supabase.channel(CHANNEL_NAME, { config: { broadcast: { self: false } } });
+    // Bridge every remote broadcast into local window events so all hooks
+    // (including wildcard listeners) receive it exactly once.
+    sharedChannel.on("broadcast", { event: "*" }, (msg: any) => {
+      const event = msg?.event as string;
+      const payload = msg?.payload;
+      if (!event) return;
+      window.dispatchEvent(new CustomEvent(`rt:${event}`, { detail: payload }));
+      window.dispatchEvent(
+        new CustomEvent("rt:*", {
+          detail: { ...(payload && typeof payload === "object" ? payload : { payload }), type: event, event },
+        }),
+      );
+    });
     sharedChannel.subscribe((status) => {
       if (status === "SUBSCRIBED") {
         channelReady = true;
@@ -92,15 +105,9 @@ export function useRealtime(
       return { event, listener };
     });
 
-    // Remote broadcasts are re-dispatched as local window events by a single
-    // listener below, so per-hook channels are no longer needed.
-    const channel = getChannel();
-    const remote = (event: string) => ({
-      event,
-      handler: ({ payload }: any) => ref.current[event]?.(payload),
-    });
-    const bindings = events.filter((e) => e !== "*").map(remote);
-    for (const b of bindings) channel?.on("broadcast", { event: b.event }, b.handler);
+    // Remote broadcasts arrive through the shared channel bridge, which
+    // re-dispatches them as the same local window events.
+    getChannel();
 
     return () => {
       for (const { event, listener } of localListeners) {
