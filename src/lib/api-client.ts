@@ -94,6 +94,7 @@ export async function getPosts(
   if (error) throw error;
   const posts = (data ?? []).map((row: any) => rowToPost(row));
   await hydrateAuthors(posts.map((p: Post) => p.user_id));
+  await hydrateEngagement(posts);
   return posts;
 }
 
@@ -109,7 +110,24 @@ export async function getBookmarkedPosts(limit = 50): Promise<Post[]> {
     .map((row) => (row.posts ? rowToPost(row.posts) : null))
     .filter(Boolean) as Post[];
   await hydrateAuthors(posts.map((p) => p.user_id));
+  await hydrateEngagement(posts);
   return posts;
+}
+
+/** Stamp each post with the signed-in user's like/repost/bookmark state. */
+async function hydrateEngagement(posts: Post[]) {
+  const userId = me();
+  if (!userId || userId === "guest" || posts.length === 0) return;
+  const ids = posts.map((p) => p.id);
+  const { liked, reposted, bookmarked } = await getMyEngagement(ids);
+  const likedSet = new Set(liked);
+  const repostedSet = new Set(reposted);
+  const savedSet = new Set(bookmarked);
+  for (const post of posts) {
+    post.likedByMe = likedSet.has(post.id);
+    post.repostedByMe = repostedSet.has(post.id);
+    post.bookmarkedByMe = savedSet.has(post.id);
+  }
 }
 
 async function hydrateAuthors(ids: string[]) {
