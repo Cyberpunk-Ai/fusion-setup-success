@@ -94,6 +94,7 @@ export async function getPosts(
   if (error) throw error;
   const posts = (data ?? []).map((row: any) => rowToPost(row));
   await hydrateAuthors(posts.map((p: Post) => p.user_id));
+  await hydrateEngagement(posts);
   return posts;
 }
 
@@ -109,7 +110,24 @@ export async function getBookmarkedPosts(limit = 50): Promise<Post[]> {
     .map((row) => (row.posts ? rowToPost(row.posts) : null))
     .filter(Boolean) as Post[];
   await hydrateAuthors(posts.map((p) => p.user_id));
+  await hydrateEngagement(posts);
   return posts;
+}
+
+/** Stamp each post with the signed-in user's like/repost/bookmark state. */
+async function hydrateEngagement(posts: Post[]) {
+  const userId = me();
+  if (!userId || userId === "guest" || posts.length === 0) return;
+  const ids = posts.map((p) => p.id);
+  const { liked, reposted, bookmarked } = await getMyEngagement(ids);
+  const likedSet = new Set(liked);
+  const repostedSet = new Set(reposted);
+  const savedSet = new Set(bookmarked);
+  for (const post of posts) {
+    post.likedByMe = likedSet.has(post.id);
+    post.repostedByMe = repostedSet.has(post.id);
+    post.bookmarkedByMe = savedSet.has(post.id);
+  }
 }
 
 async function hydrateAuthors(ids: string[]) {
@@ -150,6 +168,7 @@ export async function deletePost(id: string) {
 
 async function toggleRelation(table: string, postId: string, event: string, countField: string) {
   const userId = me();
+  if (!userId || userId === "guest") throw new Error("Sign in to interact with posts");
   const { data: existing } = await db
     .from(table)
     .select("post_id")
@@ -170,19 +189,17 @@ async function toggleRelation(table: string, postId: string, event: string, coun
     .eq("post_id", postId);
 
   const result = { active: !existing, count: count ?? 0 };
-  emitRealtime(event, { id: postId, [countField]: result.count, active: result.active });
+  emitRealtime(event, { id: postId, postId, [countField]: result.count, active: result.active });
   return result;
 }
 
 export async function toggleLikePost(postId: string) {
-  const { active, count } = await toggleRelation("likes", postId, "post:liked", "likeCount");
-  emitRealtime("post_like_updated", { postId, likeCount: count });
+  const { active, count } = await toggleRelation("likes", postId, "post_like_updated", "likeCount");
   return { liked: active, likeCount: count, likesCount: count };
 }
 
 export async function toggleRepostPost(postId: string) {
-  const { active, count } = await toggleRelation("reposts", postId, "post:reposted", "repostCount");
-  emitRealtime("post_repost_updated", { postId, repostCount: count });
+  const { active, count } = await toggleRelation("reposts", postId, "post_repost_updated", "repostCount");
   return { reposted: active, repostCount: count };
 }
 
@@ -205,6 +222,7 @@ export async function getMyEngagement(postIds: string[]) {
 
 
 export async function addPostComment(postId: string, content: string) {
+  if (!me() || me() === "guest") throw new Error("Sign in to comment");
   const { data, error } = await db
     .from("comments")
     .insert({ post_id: postId, user_id: me(), content })
@@ -218,9 +236,12 @@ export async function addPostComment(postId: string, content: string) {
     content: data.content,
     created_at: data.created_at,
   };
-  emitRealtime("post:commented", { id: postId, comment });
-  emitRealtime("new_comment", { data: { ...comment, post_id: postId } });
-  return { comment, commentCount: undefined as unknown as number };
+  const { count } = await db
+    .from("comments")
+    .select("id", { count: "exact", head: true })
+    .eq("post_id", postId);
+  emitRealtime("new_comment", { postId, data: { ...comment, post_id: postId }, commentCount: count ?? 0 });
+  return { comment, commentCount: count ?? 0 };
 }
 
 export async function getPostComments(postId: string): Promise<PostComment[]> {
@@ -233,7 +254,19 @@ export async function getPostComments(postId: string): Promise<PostComment[]> {
 }
 
 export async function votePoll(postId: string, optionId: string) {
-  await db.from("poll_votes").insert({ post_id: postId, option_id: optionId, user_id: me() });
+  const userId = me();
+  if (!userId || userId === "guest") throw new Error("Sign in to vote");
+  const { data: prior } = await db
+    .from("poll_votes")
+    .select("option_id")
+    .eq("post_id", postId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (prior) throw new Error("You already voted in this poll");
+  const { error: voteError } = await db
+    .from("poll_votes")
+    .insert({ post_id: postId, option_id: optionId, user_id: userId });
+  if (voteError) throw voteError;
   const { data } = await db.from("posts").select("poll").eq("id", postId).maybeSingle();
   const poll = data?.poll ?? null;
   if (poll?.options) {
@@ -251,8 +284,20 @@ export async function votePoll(postId: string, optionId: string) {
 }
 
 export async function recordPostImpression(postId: string) {
+  const userId = me();
+  const viewer = userId && userId !== "guest" ? userId : null;
   try {
-    await db.from("post_impressions").insert({ post_id: postId, user_id: me() });
+    if (viewer) {
+      const { data: seen } = await db
+        .from("post_impressions")
+        .select("id")
+        .eq("post_id", postId)
+        .eq("user_id", viewer)
+        .maybeSingle();
+      if (!seen) await db.from("post_impressions").insert({ post_id: postId, user_id: viewer });
+    } else {
+      await db.from("post_impressions").insert({ post_id: postId, user_id: null });
+    }
   } catch {
     /* impressions are best-effort */
   }
@@ -260,7 +305,9 @@ export async function recordPostImpression(postId: string) {
     .from("post_impressions")
     .select("id", { count: "exact", head: true })
     .eq("post_id", postId);
-  return { viewCount: count ?? 0 };
+  const viewCount = count ?? 0;
+  emitRealtime("post_view_updated", { postId, viewCount });
+  return { viewCount };
 }
 
 /* ---------------------------------------------------------------- stories */
@@ -331,6 +378,7 @@ export async function deleteStory(id: string) {
 
 export async function toggleLikeStory(storyId: string) {
   const userId = me();
+  if (!userId || userId === "guest") throw new Error("Sign in to like stories");
   const { data: existing } = await db
     .from("story_likes")
     .select("story_id")
@@ -345,6 +393,7 @@ export async function toggleLikeStory(storyId: string) {
     .from("story_likes")
     .select("story_id", { count: "exact", head: true })
     .eq("story_id", storyId);
+  emitRealtime("story_like_updated", { storyId, liked: !existing, likesCount: count ?? 0 });
   return { liked: !existing, likesCount: count ?? 0 };
 }
 
@@ -378,16 +427,59 @@ export async function updateUserProfile(patch: Partial<Profile>) {
 
 export async function toggleFollowUser(targetUserId: string) {
   const userId = me();
+  if (!userId || userId === "guest") throw new Error("Sign in to follow people");
+  if (userId === targetUserId) throw new Error("You cannot follow yourself");
+
   const { data: existing } = await db
     .from("follows")
-    .select("id")
+    .select("follower_id")
     .eq("follower_id", userId)
-    .eq("following_id", targetUserId)
+    .eq("target_id", targetUserId)
     .maybeSingle();
-  if (existing) await db.from("follows").delete().eq("id", existing.id);
-  else await db.from("follows").insert({ follower_id: userId, following_id: targetUserId });
-  emitRealtime("follow:changed", { targetUserId, following: !existing });
-  return { following: !existing };
+
+  if (existing) {
+    const { error } = await db
+      .from("follows")
+      .delete()
+      .eq("follower_id", userId)
+      .eq("target_id", targetUserId);
+    if (error) throw error;
+  } else {
+    const { error } = await db
+      .from("follows")
+      .insert({ follower_id: userId, target_id: targetUserId });
+    if (error) throw error;
+  }
+
+  const { count } = await db
+    .from("follows")
+    .select("follower_id", { count: "exact", head: true })
+    .eq("target_id", targetUserId);
+
+  const following = !existing;
+  emitRealtime("follow_updated", { targetUserId, following, followers: count ?? 0 });
+  return { following, followers: count ?? 0 };
+}
+
+/** Is the signed-in profile following this user? */
+export async function isFollowing(targetUserId: string): Promise<boolean> {
+  const userId = me();
+  if (!userId || userId === "guest" || !targetUserId) return false;
+  const { data } = await db
+    .from("follows")
+    .select("follower_id")
+    .eq("follower_id", userId)
+    .eq("target_id", targetUserId)
+    .maybeSingle();
+  return Boolean(data);
+}
+
+/** Ids the signed-in profile follows (used to pre-fill follow buttons). */
+export async function getFollowingIds(): Promise<string[]> {
+  const userId = me();
+  if (!userId || userId === "guest") return [];
+  const { data } = await db.from("follows").select("target_id").eq("follower_id", userId);
+  return ((data ?? []) as any[]).map((r) => String(r.target_id));
 }
 
 export async function uploadMedia(file: File, folder: "avatars" | "posts" | "stories" | "media" | "messages" = "media") {
@@ -704,6 +796,8 @@ export async function sendTipApi(input: {
     recipientId = data?.id;
   }
   if (!recipientId) throw new Error("Recipient not found");
+  if (!me() || me() === "guest") throw new Error("Sign in to send a tip");
+  if (recipientId === me()) throw new Error("You cannot tip yourself");
   const { error } = await db.from("tips").insert({
     from_user_id: me(),
     to_user_id: recipientId,
