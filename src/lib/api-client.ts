@@ -482,13 +482,20 @@ export async function getFollowingIds(): Promise<string[]> {
   return ((data ?? []) as any[]).map((r) => String(r.target_id));
 }
 
+/** Upload to the private "media" bucket (path: folder/<profile_id>/file) and return a long-lived link. */
 export async function uploadMedia(file: File, folder: "avatars" | "posts" | "stories" | "media" | "messages" = "media") {
-  const ext = file.name.split(".").pop() || "bin";
+  if (!me() || me() === "guest") throw new Error("Sign in to upload media");
+  const ext = (file.name.split(".").pop() || "bin").toLowerCase();
   const path = `${folder}/${me()}/${Date.now()}.${ext}`;
-  const { error } = await supabase.storage.from("media").upload(path, file, { upsert: true });
+  const { error } = await supabase.storage
+    .from("media")
+    .upload(path, file, { upsert: true, contentType: file.type || undefined });
   if (error) throw error;
-  const { data } = supabase.storage.from("media").getPublicUrl(path);
-  return { url: data.publicUrl, path };
+  const { data, error: signError } = await supabase.storage
+    .from("media")
+    .createSignedUrl(path, 60 * 60 * 24 * 365 * 5);
+  if (signError || !data) throw signError ?? new Error("Could not create media link");
+  return { url: data.signedUrl, path };
 }
 
 /* ----------------------------------------------------------------- spaces */
