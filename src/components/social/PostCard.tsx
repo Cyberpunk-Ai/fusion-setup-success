@@ -34,12 +34,14 @@ import { ReportModal } from "@/components/social/ReportModal";
 import { compact } from "@/lib/formatters";
 import type { Post, Comment, Poll } from "@/lib/types";
 import { getProfile, useProfile, currentUser } from "@/lib/profile-service";
+import { VideoPlayer } from "@/components/social/VideoPlayer";
 import {
   toggleLikePost,
   toggleRepostPost,
   toggleBookmarkPost,
   recordPostImpression,
   addPostComment,
+  getPostComments,
   deletePost,
   votePoll,
   sendFeedFeedback,
@@ -250,6 +252,8 @@ function PostCardBase({
   const [showComments, setShowComments] = useState(false);
   const [showAllComments, setShowAllComments] = useState(false);
   const [commentsList, setCommentsList] = useState<Comment[]>(post.comments || []);
+  const [commentsLoaded, setCommentsLoaded] = useState(Boolean(post.comments));
+  const [loadingComments, setLoadingComments] = useState(false);
   const [commentDraft, setCommentDraft] = useState("");
   const [submittingComment, setSubmittingComment] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -258,34 +262,31 @@ function PostCardBase({
   const [isTipModalOpen, setIsTipModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // Autoplay/Pause video when scrolling in/out of viewport
+  // Fetch comments the first time the drawer opens
   useEffect(() => {
-    if (!videoRef.current) return;
-    const videoEl = videoRef.current;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          videoEl.play().catch(() => {
-            // Safe catch for potential browser play block
-          });
-        } else {
-          videoEl.pause();
-        }
-      },
-      {
-        threshold: 0.3, // Play when 30% of the video card is visible
-      }
-    );
-
-    observer.observe(videoEl);
-
+    if (!showComments || commentsLoaded) return;
+    let active = true;
+    setLoadingComments(true);
+    getPostComments(post.id)
+      .then((rows) => {
+        if (!active) return;
+        setCommentsList((prev) => {
+          const seen = new Set(rows.map((r) => r.id));
+          return [...rows, ...prev.filter((c) => !seen.has(c.id))];
+        });
+        setCommentsLoaded(true);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setLoadingComments(false);
+      });
     return () => {
-      observer.unobserve(videoEl);
+      active = false;
     };
-  }, [post.media_url]);
+  }, [showComments, commentsLoaded, post.id]);
+
+  const commentTotal = commentsLoaded ? commentsList.length : Math.max(post.commentCount, commentsList.length);
 
   // Poll interactive state
   const [poll, setPoll] = useState<Poll | undefined>(post.poll || undefined);
@@ -603,18 +604,7 @@ function PostCardBase({
       {/* Media attachment (Image or Video) */}
       {mediaSrc && !imageError && (
         isMediaVideo(mediaSrc) || (post as any).media_type === "video" ? (
-          <div className="mt-3.5 overflow-hidden rounded-2xl border border-border/60 bg-black/90 relative w-full shadow-md group">
-            <video
-              ref={videoRef}
-              src={mediaSrc}
-              controls
-              playsInline
-              muted
-              loop
-              preload="metadata"
-              className="w-full h-auto block rounded-2xl max-h-[540px] object-cover w-full"
-            />
-          </div>
+          <VideoPlayer src={mediaSrc} className="mt-3.5 shadow-md" />
         ) : (
           <div
             onClick={() => setShowImagePreview(true)}
