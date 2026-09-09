@@ -136,6 +136,45 @@ function AuthPage() {
             {mode === "signin" ? "Sign in" : "Create account"}
           </button>
         </form>
+
+        <div className="my-4 flex items-center gap-3">
+          <span className="h-px flex-1 bg-border" />
+          <span className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground">
+            or
+          </span>
+          <span className="h-px flex-1 bg-border" />
+        </div>
+
+        <button
+          type="button"
+          onClick={handleGoogle}
+          disabled={googleBusy || busy}
+          className="flex w-full items-center justify-center gap-2.5 rounded-full border border-border bg-card py-2.5 text-sm font-bold transition-colors hover:bg-muted/50 disabled:opacity-60"
+        >
+          {googleBusy ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="#4285F4"
+                d="M23.49 12.27c0-.79-.07-1.54-.2-2.27H12v4.3h6.44a5.51 5.51 0 0 1-2.39 3.62v3h3.86c2.26-2.09 3.58-5.17 3.58-8.65z"
+              />
+              <path
+                fill="#34A853"
+                d="M12 24c3.24 0 5.96-1.08 7.95-2.91l-3.86-3c-1.08.72-2.45 1.16-4.09 1.16-3.15 0-5.82-2.13-6.77-4.99H1.28v3.12A11.99 11.99 0 0 0 12 24z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M5.23 14.26a7.2 7.2 0 0 1 0-4.52V6.62H1.28a11.99 11.99 0 0 0 0 10.76l3.95-3.12z"
+              />
+              <path
+                fill="#EA4335"
+                d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.69 1.28 6.62l3.95 3.12C6.18 6.88 8.85 4.75 12 4.75z"
+              />
+            </svg>
+          )}
+          Continue with Google
+        </button>
       </div>
     </main>
   );
