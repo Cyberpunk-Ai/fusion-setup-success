@@ -24,6 +24,7 @@ import {
   Flame,
   ThumbsUp,
   ThumbsDown,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/social/Avatar";
@@ -752,7 +753,7 @@ function PostCardBase({
         <Action
           icon={MessageCircle}
           label="Comment"
-          count={commentsList.length}
+          count={commentTotal}
           active={showComments}
           activeClass="text-sky-500"
           onClick={() => setShowComments(!showComments)}
@@ -786,12 +787,26 @@ function PostCardBase({
       {/* Expandable Comments Drawer */}
       {showComments && (
         <div className="mt-4 space-y-3 border-t border-border/60 pt-4 animate-in fade-in duration-200">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Comments ({commentsList.length})
+          <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Comments ({commentTotal})
+            {loadingComments && <Loader2 className="h-3 w-3 animate-spin text-brand" />}
           </h4>
 
           {/* Comments List */}
           <div className="space-y-3 max-h-72 overflow-y-auto custom-scrollbar pr-1.5">
+            {loadingComments && commentsList.length === 0 && (
+              <div className="space-y-3 py-1">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="flex items-start gap-2.5 animate-pulse">
+                    <div className="h-7 w-7 shrink-0 rounded-full bg-foreground/10" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-2.5 w-24 rounded bg-foreground/10" />
+                      <div className="h-2.5 w-3/4 rounded bg-foreground/10" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             {(showAllComments ? commentsList : commentsList.slice(0, 3)).map((c) => {
               const cAuthor = getProfile(c.user_id);
               return (
@@ -845,7 +860,7 @@ function PostCardBase({
               </button>
             )}
 
-            {commentsList.length === 0 && (
+            {commentsList.length === 0 && !loadingComments && (
               <p className="text-xs text-muted-foreground py-2 text-center">
                 No comments yet. Start the conversation!
               </p>

@@ -13,6 +13,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Avatar } from "@/components/social/Avatar";
+import { VideoPlayer } from "@/components/social/VideoPlayer";
 import type { Profile, Story } from "@/lib/types";
 import { getProfile, currentUserId } from "@/lib/profile-service";
 import { toggleLikeStory, deleteStory, sendMessage } from "@/lib/api-client";
@@ -53,10 +54,12 @@ export function StoryModal({
   const currentStory = stories[currentIndex];
   const author: Profile | undefined = currentStory ? getProfile(currentStory.user_id) : undefined;
   const isMyStory = currentStory?.user_id === currentUserId;
+  const mediaUrl = currentStory?.media_url || "";
+  const isVideoStory = /\.(mp4|webm|ogv|mov|m4v)(\?|#|$)/i.test(mediaUrl);
 
-  // Auto-progress timer
+  // Auto-progress timer (videos advance when they finish playing instead)
   useEffect(() => {
-    if (!isOpen || !currentStory || isPaused) return;
+    if (!isOpen || !currentStory || isPaused || isVideoStory) return;
 
     const interval = setInterval(() => {
       setProgress((prev) => {
@@ -197,10 +200,10 @@ export function StoryModal({
       <div
         className={cn(
           "relative flex flex-col justify-between h-[92vh] sm:h-[85vh] max-h-[680px] w-full max-w-sm overflow-hidden rounded-2xl sm:rounded-[32px] p-4 sm:p-5 shadow-2xl bg-gradient-to-b text-white border border-white/15 select-none transition-all",
-          !currentStory.media_url && gradientClass
+          (!currentStory.media_url || isVideoStory) && gradientClass
         )}
         style={
-          currentStory.media_url
+          currentStory.media_url && !isVideoStory
             ? {
                 backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.85) 100%), url(${currentStory.media_url})`,
                 backgroundSize: "cover",
@@ -208,14 +211,26 @@ export function StoryModal({
               }
             : {}
         }
-        onMouseDown={() => setIsPaused(true)}
-        onMouseUp={() => setIsPaused(false)}
-        onTouchStart={() => setIsPaused(true)}
-        onTouchEnd={() => setIsPaused(false)}
+        onMouseDown={() => !isVideoStory && setIsPaused(true)}
+        onMouseUp={() => !isVideoStory && setIsPaused(false)}
+        onTouchStart={() => !isVideoStory && setIsPaused(true)}
+        onTouchEnd={() => !isVideoStory && setIsPaused(false)}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Video story: real player behind the overlay */}
+        {isVideoStory && (
+          <div className="absolute inset-0 z-0">
+            <VideoPlayer
+              key={currentStory.id}
+              src={mediaUrl}
+              className="h-full w-full rounded-none border-0"
+            />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/70" />
+          </div>
+        )}
+
         {/* Top Progress Bars (One per story) */}
-        <div>
+        <div className="relative z-10">
           <div className="flex items-center gap-1.5 w-full">
             {stories.map((s, idx) => (
               <div key={s.id || idx} className="h-1 flex-1 rounded-full bg-white/25 overflow-hidden">
@@ -297,7 +312,7 @@ export function StoryModal({
         </div>
 
         {/* Center Story Content & Stickers */}
-        <div className="my-auto text-center px-4 space-y-4">
+        <div className="pointer-events-none relative z-10 my-auto text-center px-4 space-y-4">
           {currentStory.mood && (
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-xs font-bold text-white shadow-soft">
               <span>{currentStory.mood}</span>
@@ -327,7 +342,7 @@ export function StoryModal({
         </div>
 
         {/* Bottom Reaction & Reply Bar */}
-        <div className="space-y-2 pt-3">
+        <div className="relative z-10 space-y-2 pt-3">
           <form onSubmit={handleSendReply} className="flex items-center gap-2">
             <input
               type="text"
