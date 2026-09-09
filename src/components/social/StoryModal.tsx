@@ -199,10 +199,10 @@ export function StoryModal({
       <div
         className={cn(
           "relative flex flex-col justify-between h-[92vh] sm:h-[85vh] max-h-[680px] w-full max-w-sm overflow-hidden rounded-2xl sm:rounded-[32px] p-4 sm:p-5 shadow-2xl bg-gradient-to-b text-white border border-white/15 select-none transition-all",
-          !currentStory.media_url && gradientClass
+          (!currentStory.media_url || isVideoStory) && gradientClass
         )}
         style={
-          currentStory.media_url
+          currentStory.media_url && !isVideoStory
             ? {
                 backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.85) 100%), url(${currentStory.media_url})`,
                 backgroundSize: "cover",
@@ -210,14 +210,26 @@ export function StoryModal({
               }
             : {}
         }
-        onMouseDown={() => setIsPaused(true)}
-        onMouseUp={() => setIsPaused(false)}
-        onTouchStart={() => setIsPaused(true)}
-        onTouchEnd={() => setIsPaused(false)}
+        onMouseDown={() => !isVideoStory && setIsPaused(true)}
+        onMouseUp={() => !isVideoStory && setIsPaused(false)}
+        onTouchStart={() => !isVideoStory && setIsPaused(true)}
+        onTouchEnd={() => !isVideoStory && setIsPaused(false)}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Video story: real player behind the overlay */}
+        {isVideoStory && (
+          <div className="absolute inset-0 z-0">
+            <VideoPlayer
+              key={currentStory.id}
+              src={mediaUrl}
+              className="h-full w-full rounded-none border-0"
+            />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/70" />
+          </div>
+        )}
+
         {/* Top Progress Bars (One per story) */}
-        <div>
+        <div className="relative z-10">
           <div className="flex items-center gap-1.5 w-full">
             {stories.map((s, idx) => (
               <div key={s.id || idx} className="h-1 flex-1 rounded-full bg-white/25 overflow-hidden">
