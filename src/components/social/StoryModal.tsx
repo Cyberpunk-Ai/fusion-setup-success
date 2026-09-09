@@ -13,6 +13,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Avatar } from "@/components/social/Avatar";
+import { VideoPlayer } from "@/components/social/VideoPlayer";
 import type { Profile, Story } from "@/lib/types";
 import { getProfile, currentUserId } from "@/lib/profile-service";
 import { toggleLikeStory, deleteStory, sendMessage } from "@/lib/api-client";
@@ -311,7 +312,7 @@ export function StoryModal({
         </div>
 
         {/* Center Story Content & Stickers */}
-        <div className="my-auto text-center px-4 space-y-4">
+        <div className="pointer-events-none relative z-10 my-auto text-center px-4 space-y-4">
           {currentStory.mood && (
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-xs font-bold text-white shadow-soft">
               <span>{currentStory.mood}</span>
@@ -341,7 +342,7 @@ export function StoryModal({
         </div>
 
         {/* Bottom Reaction & Reply Bar */}
-        <div className="space-y-2 pt-3">
+        <div className="relative z-10 space-y-2 pt-3">
           <form onSubmit={handleSendReply} className="flex items-center gap-2">
             <input
               type="text"
