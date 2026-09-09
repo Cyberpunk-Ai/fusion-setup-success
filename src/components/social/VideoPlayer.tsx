@@ -14,7 +14,15 @@ function formatTime(seconds: number) {
  * Minimal, smooth video player: a single progress rail, play/mute/fullscreen
  * and an auto-hiding control bar. Autopauses when scrolled out of view.
  */
-export function VideoPlayer({ src, className }: { src: string; className?: string }) {
+export function VideoPlayer({
+  src,
+  className,
+  onEnded,
+}: {
+  src: string;
+  className?: string;
+  onEnded?: () => void;
+}) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
