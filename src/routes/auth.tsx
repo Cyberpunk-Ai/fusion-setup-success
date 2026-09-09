@@ -45,6 +45,8 @@ function AuthPage() {
         return;
       }
       if (result.redirected) return;
+      const { data } = await supabase.auth.getUser();
+      if (data.user) await ensureProfile(data.user.id, data.user.email ?? "member");
       toast.success("Signed in with Google");
       void navigate({ to: "/" });
     } catch (err) {
