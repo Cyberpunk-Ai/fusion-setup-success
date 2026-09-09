@@ -24,6 +24,7 @@ import {
   Flame,
   ThumbsUp,
   ThumbsDown,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/social/Avatar";
@@ -859,7 +860,7 @@ function PostCardBase({
               </button>
             )}
 
-            {commentsList.length === 0 && (
+            {commentsList.length === 0 && !loadingComments && (
               <p className="text-xs text-muted-foreground py-2 text-center">
                 No comments yet. Start the conversation!
               </p>
