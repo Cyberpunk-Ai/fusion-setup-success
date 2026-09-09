@@ -53,10 +53,12 @@ export function StoryModal({
   const currentStory = stories[currentIndex];
   const author: Profile | undefined = currentStory ? getProfile(currentStory.user_id) : undefined;
   const isMyStory = currentStory?.user_id === currentUserId;
+  const mediaUrl = currentStory?.media_url || "";
+  const isVideoStory = /\.(mp4|webm|ogv|mov|m4v)(\?|#|$)/i.test(mediaUrl);
 
-  // Auto-progress timer
+  // Auto-progress timer (videos advance when they finish playing instead)
   useEffect(() => {
-    if (!isOpen || !currentStory || isPaused) return;
+    if (!isOpen || !currentStory || isPaused || isVideoStory) return;
 
     const interval = setInterval(() => {
       setProgress((prev) => {
